@@ -19,14 +19,13 @@ jobs:
       - name: Clone Overleaf repository
         env:
           OVERLEAF_PROJECT_ID: ${{ secrets.OVERLEAF_PROJECT_ID }}
-          OVERLEAF_EMAIL: ${{ secrets.OVERLEAF_EMAIL }}
           OVERLEAF_TOKEN: ${{ secrets.OVERLEAF_TOKEN }}
         run: |
           # URL-encode the email to safely use it in the Git URL
           ENCODED_EMAIL=$(python -c "import urllib.parse; print(urllib.parse.quote('''$OVERLEAF_EMAIL'''))")
           
           # Clone the Overleaf project into a temporary directory
-          git clone "https://${ENCODED_EMAIL}:${OVERLEAF_TOKEN}@git.overleaf.com/${OVERLEAF_PROJECT_ID}" overleaf_repo
+          git clone "https://git:${OVERLEAF_TOKEN}@git.overleaf.com/${OVERLEAF_PROJECT_ID}" overleaf_repo
 
       - name: Update .bib file and push to Overleaf
         run: |
