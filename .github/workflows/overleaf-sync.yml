@@ -1,0 +1,40 @@
+name: Sync BibTeX to Overleaf
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'cv-ml-master.bib' # Only trigger when the .bib file is modified
+
+jobs:
+  update-overleaf:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub repository
+        uses: actions/checkout@v4
+
+      - name: Clone Overleaf repository
+        env:
+          OVERLEAF_PROJECT_ID: ${{ secrets.OVERLEAF_PROJECT_ID }}
+          OVERLEAF_EMAIL: ${{ secrets.OVERLEAF_EMAIL }}
+          OVERLEAF_TOKEN: ${{ secrets.OVERLEAF_TOKEN }}
+        run: |
+          # URL-encode the email to safely use it in the Git URL
+          ENCODED_EMAIL=$(python -c "import urllib.parse; print(urllib.parse.quote('''$OVERLEAF_EMAIL'''))")
+          
+          # Clone the Overleaf project into a temporary directory
+          git clone "https://${ENCODED_EMAIL}:${OVERLEAF_TOKEN}@git.overleaf.com/${OVERLEAF_PROJECT_ID}" overleaf_repo
+
+      - name: Update .bib file and push to Overleaf
+        run: |
+          # Copy the updated .bib file into the cloned Overleaf repository
+          cp cv-ml-master.bib overleaf_repo/
+          cd overleaf_repo
+          
+          git config user.name "GitHub Actions Bot"
+          git add cv-ml-master.bib
+          
+          # Commit and push only if there are changes
+          git diff --staged --quiet || (git commit -m "Auto-update cv-ml-master.bib from GitHub" && git push origin master)
