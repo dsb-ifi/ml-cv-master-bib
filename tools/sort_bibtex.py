@@ -4,30 +4,16 @@ import os
 import logging
 
 logger = logging.getLogger(__name__)
+from bibtex_utils import get_bibtex_blocks, extract_field
 
-def sort_bibtex(input_file, output_file):
+def sort_bibtex(input_file: str, output_file: str) -> None:
   if not os.path.exists(input_file):
     raise FileNotFoundError(f"Input file '{input_file}' not found.")
 
   with open(input_file, 'r', encoding='utf-8') as f:
     content = f.read()
 
-  # Split exactly by newline to preserve spacing structure when joined later
-  lines = content.split('\n')
-  blocks = []
-  current_block = []
-
-  # Group file lines into individual logical blocks (entries or headers/footers)
-  for line in lines:
-    if re.match(r'^\s*@[a-zA-Z]+\{', line):
-      if current_block:
-        blocks.append(current_block)
-      current_block = [line]
-    else:
-      current_block.append(line)
-      
-  if current_block:
-    blocks.append(current_block)
+  blocks = get_bibtex_blocks(content)
 
   header_blocks = []
   entries = []
@@ -55,15 +41,36 @@ def sort_bibtex(input_file, output_file):
         else:
           header_blocks.append(block)
       else:
-        entries.append((key, block))
+        author = extract_field(block_text, 'author') or ""
+        year = extract_field(block_text, 'year') or ""
+        title = extract_field(block_text, 'title') or ""
+
+        lastname = ""
+        if author:
+          first_author = re.split(r'\s+and\s+', author, flags=re.IGNORECASE)[0].strip()
+          if ',' in first_author:
+            lastname = first_author.split(',')[0].strip()
+          else:
+            lastname = first_author.split()[-1].strip()
+          lastname = re.sub(r'[^a-z]', '', lastname.lower())
+
+        year_match = re.search(r'\d{4}', year)
+        year_str = year_match.group() if year_match else year.strip()
+
+        title_clean = re.sub(r'\\[a-zA-Z]+\s*', '', title)
+        title_clean = re.sub(r'[^\w\s]', ' ', title_clean)
+        title_clean = " ".join(title_clean.split()).lower()
+
+        sort_tuple = (lastname, year_str, title_clean, key.lower())
+        entries.append((sort_tuple, key, block))
     else:
       header_blocks.append(block)
 
-  original_keys = [e[0] for e in entries]
+  original_keys = [e[1] for e in entries]
   
-  # Case-insensitive alphabetical sort
-  entries.sort(key=lambda x: x[0].lower())
-  sorted_keys = [e[0] for e in entries]
+  # Sort by lastname, year, title, and fallback to key
+  entries.sort(key=lambda x: x[0])
+  sorted_keys = [e[1] for e in entries]
 
   if original_keys != sorted_keys:
     logger.info(f"Sorted {len(entries)} entries.")
@@ -74,7 +81,7 @@ def sort_bibtex(input_file, output_file):
     logger.info(f"File is already sorted. Processed {len(entries)} entries.")
 
   # Reconstruct the document components in order
-  sorted_blocks = header_blocks + [e[1] for e in entries] + footer_blocks
+  sorted_blocks = header_blocks + [e[2] for e in entries] + footer_blocks
 
   final_lines = []
   for block in sorted_blocks:
@@ -83,7 +90,7 @@ def sort_bibtex(input_file, output_file):
   with open(output_file, 'w', encoding='utf-8') as f:
     f.write('\n'.join(final_lines))
 
-def main():
+def main() -> None:
   parser = argparse.ArgumentParser(description="Sort a BibTeX file alphabetically by keys.")
   
   group = parser.add_mutually_exclusive_group(required=True)

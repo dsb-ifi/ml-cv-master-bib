@@ -2,44 +2,12 @@ import argparse
 import re
 import os
 import logging
+from typing import Set
 
 logger = logging.getLogger(__name__)
+from bibtex_utils import extract_field
 
-def extract_field(text, field_name):
-  """Safely extracts field values, handling nested brackets and quotes."""
-  pattern = re.compile(rf'\b{field_name}\s*=\s*', re.IGNORECASE)
-  match = pattern.search(text)
-  if not match:
-    return None
-  
-  value_start = text[match.end():].lstrip()
-  
-  if value_start.startswith('{'):
-    brace_level = 0
-    extracted = []
-    for char in value_start:
-      if char == '{':
-        brace_level += 1
-      elif char == '}':
-        brace_level -= 1
-      extracted.append(char)
-      if brace_level == 0:
-        break
-    return "".join(extracted)[1:-1]
-    
-  elif value_start.startswith('"'):
-    extracted = ['"']
-    for char in value_start[1:]:
-      extracted.append(char)
-      if char == '"':
-        break
-    return "".join(extracted)[1:-1]
-    
-  else:
-    # Handle raw strings like macros or numbers
-    return value_start.split(',')[0].strip()
-
-def standardize_entry(entry_text, stopwords):
+def standardize_entry(entry_text: str, stopwords: Set[str], seen_keys: Set[str]) -> str:
   """Takes raw string of a bibtex entry and standardizes its key."""
   match = re.search(r'^(\s*@[a-zA-Z]+\{)([^,]+)(,)', entry_text)
   if not match:
@@ -86,12 +54,19 @@ def standardize_entry(entry_text, stopwords):
       title_word = words[0].lower()
       
     if lastname and year_str and title_word:
-      new_key = f"{lastname}{year_str}{title_word}"
+      base_key = f"{lastname}{year_str}{title_word}"
+      new_key = base_key
+      suffix = 97  # ASCII code for 'a'
+      while new_key in seen_keys:
+        new_key = f"{base_key}{chr(suffix)}"
+        suffix += 1
+      seen_keys.add(new_key)
+
       if old_key != new_key:
         logger.info(f"Updated entry: '{old_key}' -> '{new_key}'")
         entry_text = entry_text.replace(f"{entry_type}{old_key},", f"{entry_type}{new_key},", 1)
       else:
-        logger.info(f"Entry unchanged: '{old_key}'")
+        logger.debug(f"Entry unchanged: '{old_key}'")
     else:
       logger.debug(f"Could not parse valid lastname/year/title for entry: '{old_key}'")
   else:
@@ -100,7 +75,7 @@ def standardize_entry(entry_text, stopwords):
   return entry_text
 
 
-def process_bibtex(input_file, output_file, stopwords_file):
+def process_bibtex(input_file: str, output_file: str, stopwords_file: str) -> None:
   if not os.path.exists(stopwords_file):
     raise FileNotFoundError(f"Stopwords file '{stopwords_file}' not found. Please provide a text file containing function words.")
       
@@ -114,11 +89,12 @@ def process_bibtex(input_file, output_file, stopwords_file):
   new_lines = []
   current_entry = []
   in_entry = False
+  seen_keys = set()
 
   for line in lines:
     if re.match(r'^\s*@[a-zA-Z]+\{', line):
       if current_entry:
-        new_lines.append(standardize_entry("\n".join(current_entry), stopwords))
+        new_lines.append(standardize_entry("\n".join(current_entry), stopwords, seen_keys))
       current_entry = [line]
       in_entry = True
     elif in_entry:
@@ -127,13 +103,13 @@ def process_bibtex(input_file, output_file, stopwords_file):
       new_lines.append(line)
       
   if current_entry:
-    new_lines.append(standardize_entry("\n".join(current_entry), stopwords))
+    new_lines.append(standardize_entry("\n".join(current_entry), stopwords, seen_keys))
 
   with open(output_file, 'w') as f:
     f.write("\n".join(new_lines))
 
 
-def main():
+def main() -> None:
   parser = argparse.ArgumentParser(description="Standardize BibTeX keys to lastnameYYYYfirstTitleWord format.")
   
   group = parser.add_mutually_exclusive_group(required=True)
@@ -142,7 +118,8 @@ def main():
   
   parser.add_argument("-o", "--output", help="Path to the output BibTeX file")
   
-  parser.add_argument("-s", "--stopwords", default="function_words.txt", help="Path to the txt file containing function words")
+  default_stopwords = os.path.join(os.path.dirname(os.path.abspath(__file__)), "function_words.txt")
+  parser.add_argument("-s", "--stopwords", default=default_stopwords, help="Path to the txt file containing function words")
   parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase output verbosity (-v for INFO, -vv for DEBUG)")
   
   args = parser.parse_args()

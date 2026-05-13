@@ -38,12 +38,12 @@ MONTH_MAP = {
   'dec': 'dec', 'december': 'dec'
 }
 
-def load_macros(texmf_dir: str) -> Set[str]:
+def load_macros(journal_dir: str) -> Set[str]:
   macros = set()
-  target_dir = os.path.join(texmf_dir, 'bibtex', 'bib', 'journal-list')
+  target_dir = os.path.join(journal_dir, 'journal-list')
     
   if not os.path.exists(target_dir):
-    logger.warning(f"Could not find 'journal-list' in '{os.path.join(texmf_dir, 'bibtex', 'bib')}'. Macro verification skipped.")
+    logger.warning(f"Could not find 'journal-list' in '{journal_dir}'. Macro verification skipped.")
     return macros
     
   bib_file_path = os.path.join(target_dir, 'abrv.bib')
@@ -121,11 +121,11 @@ def sanitize_block(block_text: str, valid_macros: Set[str], key: str) -> str:
 
   return block_text
 
-def sanitize_bibtex(input_file: str, output_file: str, texmf_dir: str) -> None:
+def sanitize_bibtex(input_file: str, output_file: str, journal_dir: str) -> None:
   if not os.path.exists(input_file):
     raise FileNotFoundError(f"Input file '{input_file}' not found.")
     
-  valid_macros = load_macros(texmf_dir)
+  valid_macros = load_macros(journal_dir)
 
   with open(input_file, 'r', encoding='utf-8') as f:
     content = f.read()
@@ -175,7 +175,7 @@ def main() -> None:
   group.add_argument("-r", "--replace", help="Path to the BibTeX file to process and replace in-place")
   
   parser.add_argument("-o", "--output", help="Path to the output BibTeX file")
-  parser.add_argument("-t", "--texmf", default=os.path.expanduser("~/texmf"), help="Path to the local texmf directory (default: ~/texmf)")
+  parser.add_argument("-j", "--journal_dir", default=os.path.expanduser("~/texmf/bibtex/bib"), help="Path to the parent folder of journal-list (default: ~/texmf/bibtex/bib)")
   parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase output verbosity (-v for INFO, -vv for DEBUG)")
   
   args = parser.parse_args()
@@ -192,7 +192,7 @@ def main() -> None:
   in_file = args.replace if args.replace else args.input
   out_file = args.replace if args.replace else args.output
   
-  sanitize_bibtex(in_file, out_file, args.texmf)
+  sanitize_bibtex(in_file, out_file, args.journal_dir)
 
 if __name__ == "__main__":
   main()
