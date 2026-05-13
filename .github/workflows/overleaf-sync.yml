@@ -4,13 +4,71 @@ on:
   push:
     branches:
       - main
-      - master
     paths:
       - 'cv-ml-master.bib' # Only trigger when the .bib file is modified
   workflow_dispatch: # Allows you to manually trigger the workflow from the Actions tab
 
 jobs:
+  test-standardization:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub repository
+        uses: actions/checkout@v4
+
+      - name: Verify standardization
+        run: |
+          make standardize OPTS="-vv"
+          if ! git diff --exit-code cv-ml-master.bib; then
+            echo "::error::The cv-ml-master.bib file is not fully standardized. Please run 'make standardize' locally and commit the changes."
+            exit 1
+          fi
+
+  test-bibstrings:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub repository
+        uses: actions/checkout@v4
+
+      - name: Get styles into container
+        run: |
+          mkdir -p journal-list
+      
+          # setup journal-list
+          sudo apt-get update -qq && sudo apt-get install --no-install-recommends -y curl unzip
+          curl -L -o artifacts.zip https://gitlab.com/adin/journal-list/builds/artifacts/master/download?job=build
+          unzip -o artifacts.zip -d journal-list
+          rm artifacts.zip
+
+      - name: Verify venue bibstrings
+        run: |
+          OUTPUT=$(make sanitize OPTS="-vv -j ." 2>&1)
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -q "^ERROR:"; then
+            echo "::error::Unknown bibstring macros found in venue names. Please check the logs."
+            exit 1
+          fi
+
+  test-duplicates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub repository
+        uses: actions/checkout@v4
+
+      - name: Verify no duplicates
+        run: |
+          OUTPUT=$(make duplicates OPTS="-vv" 2>&1)
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -q "^ERROR: Found.*unresolved duplicates"; then
+            echo "::error::The cv-ml-master.bib file contains unresolved duplicates. Please check the logs."
+            exit 1
+          fi
+          if ! git diff --exit-code cv-ml-master.bib; then
+            echo "::error::The cv-ml-master.bib file contains duplicates. Please run 'make duplicates' locally and commit the changes."
+            exit 1
+          fi
+
   update-overleaf:
+    needs: [test-standardization, test-duplicates, test-bibstrings]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout GitHub repository
