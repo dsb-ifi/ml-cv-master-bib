@@ -78,6 +78,27 @@ def sanitize_block(block_text: str, valid_macros: Set[str], key: str) -> str:
     # Abort if the inner content looks like it contains another field definition entirely
     if re.search(r'^\s*[a-zA-Z0-9_\-]+\s*=', inner, flags=re.MULTILINE):
       return match.group(0)
+      
+    # Abort if braces are unbalanced or depth drops below 0.
+    # This preserves outer braces for `{{BEGIN} words {END}}` (depth drops < 0)
+    # but successfully simplifies `{{{BEGIN} words {END}}}` (depth stays >= 0).
+    depth = 0
+    escaped = False
+    for char in inner:
+      if escaped:
+        escaped = False
+        continue
+      if char == '\\':
+        escaped = True
+      elif char == '{':
+        depth += 1
+      elif char == '}':
+        depth -= 1
+        if depth < 0:
+          return match.group(0)
+    if depth != 0:
+      return match.group(0)
+
     return f"{match.group(1)}{{{inner}}}{match.group(3)}"
     
   block_text = re.sub(r'^( *[a-zA-Z0-9_\-]+\s*=\s*)\{\{([\s\S]*?)\}\}(,?\s*)$', remove_double_braces, block_text, flags=re.MULTILINE)
