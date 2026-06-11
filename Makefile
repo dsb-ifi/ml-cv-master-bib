@@ -3,11 +3,12 @@ BIB_FILE ?= cv-ml-master.bib
 PYTHON ?= python
 OPTS ?= -v
 
-.PHONY: help sanitize sort keys duplicates standardize
+.PHONY: help sanitize authors sort keys duplicates standardize
 
 help:
 	@echo "Available commands:"
 	@echo "  make sanitize   - Sanitize LaTeX macros, months, and page ranges"
+	@echo "  make authors    - Standardize author field formatting"
 	@echo "  make sort       - Sort entries by author, year, and title"
 	@echo "  make keys       - Standardize citation keys"
 	@echo "  make duplicates - Find and merge duplicate entries"
@@ -19,6 +20,9 @@ help:
 sanitize:
 	$(PYTHON) tools/sanitize_bibtex.py -r $(BIB_FILE) $(OPTS)
 
+authors:
+	$(PYTHON) tools/standardize_authors.py -r $(BIB_FILE) $(OPTS)
+
 sort:
 	$(PYTHON) tools/sort_bibtex.py -r $(BIB_FILE) $(OPTS)
 
@@ -28,7 +32,7 @@ keys:
 duplicates:
 	$(PYTHON) tools/find_duplicates.py -r $(BIB_FILE) $(OPTS)
 
-standardize: sanitize sort keys duplicates
+standardize: sanitize authors sort keys duplicates
 	@echo "========================================"
 	@echo " Pipeline complete for $(BIB_FILE)!"
 	@echo "========================================"
