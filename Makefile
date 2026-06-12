@@ -3,7 +3,7 @@ BIB_FILE ?= cv-ml-master.bib
 PYTHON ?= python
 OPTS ?= -v
 
-.PHONY: help sanitize authors sort keys duplicates standardize
+.PHONY: help sanitize authors sort keys duplicates check standardize
 
 help:
 	@echo "Available commands:"
@@ -12,6 +12,7 @@ help:
 	@echo "  make sort       - Sort entries by author, year, and title"
 	@echo "  make keys       - Standardize citation keys"
 	@echo "  make duplicates - Find and merge duplicate entries"
+	@echo "  make check      - Verify if the bibtex file is valid"
 	@echo "  make standardize- Run the full pipeline sequentially"
 	@echo ""
 	@echo "Options:"
@@ -32,7 +33,10 @@ keys:
 duplicates:
 	$(PYTHON) tools/find_duplicates.py -r $(BIB_FILE) $(OPTS)
 
-standardize: sanitize authors sort keys duplicates
+check:
+	$(PYTHON) tools/check_bibtex.py -r $(BIB_FILE) $(OPTS)
+
+standardize: sanitize authors sort keys duplicates check
 	@echo "========================================"
 	@echo " Pipeline complete for $(BIB_FILE)!"
 	@echo "========================================"
