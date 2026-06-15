@@ -39,8 +39,19 @@ MONTH_MAP = {
   'dec': 'dec', 'december': 'dec'
 }
 
-def find_journal_list_file() -> str:
-  for filename in ['journal-list/abrv.bib', 'journal-list/full.bib']:
+def find_journal_list_file(search_dir: str = "") -> str:
+  filenames = ['journal-list/abrv.bib', 'journal-list/full.bib']
+
+  # If a search directory is given, look there first
+  if search_dir:
+    for filename in filenames:
+      path = os.path.join(search_dir, filename)
+      if os.path.exists(path):
+        return path
+    logger.warning(f"No journal-list files found under '{search_dir}'.")
+
+  # Fall back to kpsewhich
+  for filename in filenames:
     try:
       result = subprocess.run(['kpsewhich', filename], stdout=subprocess.PIPE, text=True, check=True)
       path = result.stdout.strip()
@@ -50,9 +61,9 @@ def find_journal_list_file() -> str:
       continue
   return ""
 
-def load_macros() -> Set[str]:
+def load_macros(search_dir: str = "") -> Set[str]:
   macros = set()
-  bib_file_path = find_journal_list_file()
+  bib_file_path = find_journal_list_file(search_dir)
     
   if not bib_file_path:
     logger.warning("Could not find 'journal-list/abrv.bib' or 'journal-list/full.bib' using kpsewhich. Macro verification skipped.")
@@ -146,11 +157,11 @@ def sanitize_block(block_text: str, valid_macros: Set[str], key: str) -> str:
 
   return block_text
 
-def sanitize_bibtex(input_file: str, output_file: str) -> None:
+def sanitize_bibtex(input_file: str, output_file: str, journal_dir: str = "") -> None:
   if not os.path.exists(input_file):
     raise FileNotFoundError(f"Input file '{input_file}' not found.")
     
-  valid_macros = load_macros()
+  valid_macros = load_macros(journal_dir)
 
   with open(input_file, 'r', encoding='utf-8') as f:
     content = f.read()
@@ -200,6 +211,7 @@ def main() -> None:
   group.add_argument("-r", "--replace", help="Path to the BibTeX file to process and replace in-place")
   
   parser.add_argument("-o", "--output", help="Path to the output BibTeX file")
+  parser.add_argument("-j", "--journal-dir", default="", help="Base directory to search for journal-list/*.bib files")
   parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase output verbosity (-v for INFO, -vv for DEBUG)")
   
   args = parser.parse_args()
@@ -216,7 +228,7 @@ def main() -> None:
   in_file = args.replace if args.replace else args.input
   out_file = args.replace if args.replace else args.output
   
-  sanitize_bibtex(in_file, out_file)
+  sanitize_bibtex(in_file, out_file, journal_dir=args.journal_dir)
 
 if __name__ == "__main__":
   main()
