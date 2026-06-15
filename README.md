@@ -6,7 +6,7 @@ We have been re-creating bibliographies (and making the same mistakes) again and
 
 In your local development setup, you can clone this repository and soft-link it in the project you are using.
 
-In Overleaf, you can add the file from the project `cv-ml master bib` into your project and refresh it when changes are made.  
+In Overleaf, you can add the file from the project [`cv-ml master bib`](https://www.overleaf.com/read/ptshypwmxgdf#219c3f) into your project and refresh it when changes are made.  
 
 You should also set up the `journal-list` file in your project (either locally or in Overleaf).
 
@@ -31,9 +31,29 @@ make standardize
 
 This command sequentially runs the following tools on `cv-ml-master.bib`:
 - **Sanitize** (`make sanitize`): Replaces non-standard characters with LaTeX macros, removes double curly braces, normalizes month formats, fixes page ranges, and verifies that unquoted macros exist in your local `~/texmf/bibtex/bib/journal-list` repository.
+- **Standardize Authors** (`make authors`): Standardizes author field formatting (e.g., consistent name ordering and separators).
 - **Sort** (`make sort`): Sorts the entries alphabetically by the first author's last name, year, and cleaned title.
 - **Standardize Keys** (`make keys`): Replaces citation keys using the `lastnameYYYYfirstTitleWord` pattern, disambiguating identical keys with letters (a, b, c).
 - **Find Duplicates** (`make duplicates`): Scans for duplicate entries based on title and author lists. Exact duplicates are merged.
+- **Check** (`make check`): Verifies that the BibTeX file is valid (e.g., well-formed entries, required fields present).
+
+Each step can also be run individually (e.g., `make sort`). Run `make help` to see a summary of all available targets.
+
+### Configurable Variables
+
+The Makefile exposes the following variables that can be overridden on the command line:
+
+| Variable   | Default              | Description                              |
+|------------|----------------------|------------------------------------------|
+| `BIB_FILE` | `cv-ml-master.bib`   | Path to the BibTeX file to process       |
+| `PYTHON`   | `python`             | Python interpreter to use                |
+| `OPTS`     | `-v`                 | Options passed to the Python tools       |
+
+For example, to run the full pipeline on a different file with extra verbosity:
+
+```bash
+make standardize BIB_FILE=other.bib OPTS="-vv"
+```
 
 ### Evaluating Inconsistencies
 If you want to evaluate inconsistencies—such as papers with the same title but different authors, conflicting fields among duplicates, or unrecognized macros—you can run the tools with increased verbosity:
