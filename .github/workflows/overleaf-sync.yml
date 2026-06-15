@@ -15,6 +15,9 @@ jobs:
       - name: Checkout GitHub repository
         uses: actions/checkout@v6
 
+      - name: Install biber
+        run: sudo apt-get update -qq && sudo apt-get install --no-install-recommends -y biber
+
       - name: Verify standardization
         run: |
           make standardize OPTS="-vv"
@@ -67,8 +70,40 @@ jobs:
             exit 1
           fi
 
+  test-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub repository
+        uses: actions/checkout@v6
+
+      - name: Install biber
+        run: sudo apt-get update -qq && sudo apt-get install --no-install-recommends -y biber
+
+      - name: Verify BibTeX validity
+        run: |
+          OUTPUT=$(make check OPTS="-vv" 2>&1)
+          echo "$OUTPUT"
+          if [ $? -ne 0 ]; then
+            echo "::error::BibTeX validation failed. Please check the logs."
+            exit 1
+          fi
+
+  test-authors:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub repository
+        uses: actions/checkout@v6
+
+      - name: Verify author formatting
+        run: |
+          make authors OPTS="-vv"
+          if ! git diff --exit-code cv-ml-master.bib; then
+            echo "::error::Author fields are not standardized. Please run 'make authors' locally and commit the changes."
+            exit 1
+          fi
+
   update-overleaf:
-    needs: [test-standardization, test-duplicates, test-bibstrings]
+    needs: [test-standardization, test-duplicates, test-bibstrings, test-check, test-authors]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout GitHub repository
