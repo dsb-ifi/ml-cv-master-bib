@@ -102,8 +102,21 @@ jobs:
             exit 1
           fi
 
+  test-titles:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub repository
+        uses: actions/checkout@v6
+
+      - name: Verify protected title words
+        run: |
+          if ! make titles OPTS="-v"; then
+            echo "::error::Some titles have acronyms or proper names without braces. Please check the logs."
+            exit 1
+          fi
+
   update-overleaf:
-    needs: [test-standardization, test-duplicates, test-bibstrings, test-check, test-authors]
+    needs: [test-standardization, test-duplicates, test-bibstrings, test-check, test-authors, test-titles]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout GitHub repository

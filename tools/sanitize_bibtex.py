@@ -3,7 +3,7 @@ import re
 import os
 import logging
 import subprocess
-from typing import Set
+from typing import Dict, List, Set
 
 logger = logging.getLogger(__name__)
 from bibtex_utils import get_bibtex_blocks
@@ -81,7 +81,107 @@ def load_macros(search_dir: str = "") -> Set[str]:
 
   return macros
 
-def sanitize_block(block_text: str, valid_macros: Set[str], key: str) -> str:
+VENUE_FIELDS = ('journal', 'journaltitle', 'booktitle', 'series')
+
+
+def normalize_venue(name: str, strip_prefixes: bool = True) -> str:
+  """Reduces a venue name to a comparable form: no braces, accents, acronyms in parentheses and, optionally, no leading boilerplate."""
+  name = re.sub(r'\\[a-zA-Z]+\s*|\\.', '', name)
+  name = re.sub(r'[{}]', '', name).lower()
+  name = re.sub(r'\([^)]*\)', ' ', name)
+  name = re.sub(r'[^a-z0-9]+', ' ', name).strip()
+
+  prefix = re.compile(r'^(proceedings of|proc of|the|ieee cvf|ieee|cvf|acm)\s+')
+  while strip_prefixes and prefix.match(name):
+    name = prefix.sub('', name, count=1)
+  return name
+
+
+def load_venue_names(search_dir: str = "") -> Dict[str, Set[str]]:
+  """Maps each normalized full and abbreviated journal-list name to the bibstrings that define it.
+
+  Keys are stored twice: as is (`exact:`) and without leading publisher boilerplate (`loose:`).
+  """
+  names: Dict[str, Set[str]] = {}
+  found = find_journal_list_file(search_dir)
+  if not found:
+    return names
+
+  for filename in ('full.bib', 'abrv.bib'):
+    path = os.path.join(os.path.dirname(found), filename)
+    if not os.path.exists(path):
+      continue
+    with open(path, 'r', encoding='utf-8') as bib_file:
+      for m in re.finditer(r'@string\s*[\{\(]\s*([a-zA-Z0-9_\-]+)\s*=\s*"(.*)"\s*[\}\)]', bib_file.read(), flags=re.IGNORECASE):
+        names.setdefault('exact:' + normalize_venue(m.group(2), strip_prefixes=False), set()).add(m.group(1))
+        names.setdefault('loose:' + normalize_venue(m.group(2)), set()).add(m.group(1))
+  return names
+
+
+def read_value(text: str, start: int) -> List[str]:
+  """Splits the field value starting at `start` into its `#`-joined parts, keeping delimiters."""
+  parts, i = [], start
+  while i < len(text):
+    while i < len(text) and text[i] in ' \t\r\n':
+      i += 1
+    if i >= len(text):
+      break
+
+    if text[i] in '{"':
+      close = '}' if text[i] == '{' else '"'
+      depth, j = 0, i
+      while j < len(text):
+        char = text[j]
+        if char == '{':
+          depth += 1
+        elif char == '}':
+          depth -= 1
+        if (close == '}' and depth == 0) or (close == '"' and char == '"' and j > i and depth == 0):
+          break
+        j += 1
+      parts.append(text[i:j + 1])
+      i = j + 1
+    else:
+      m = re.match(r'[^\s,#}]+', text[i:])
+      if not m:
+        break
+      parts.append(m.group(0))
+      i += m.end()
+
+    while i < len(text) and text[i] in ' \t\r\n':
+      i += 1
+    if i < len(text) and text[i] == '#':
+      i += 1
+      continue
+    break
+  return parts
+
+
+def check_venues(block_text: str, key: str, valid_macros: Set[str], venue_names: Dict[str, Set[str]]) -> None:
+  """Reports unknown macros and literal venue names that should be bibstrings."""
+  pattern = r'(?<![\w\-])(' + '|'.join(VENUE_FIELDS) + r')\s*=\s*'
+  for match in re.finditer(pattern, block_text, flags=re.IGNORECASE):
+    field_name = match.group(1)
+    parts = read_value(block_text, match.end())
+    literals = [p for p in parts if p[0] in '{"']
+    macros = [p for p in parts if p[0] not in '{"' and not p.isdigit()]
+
+    for macro in macros:
+      if macro.lower() not in valid_macros:
+        logger.error(f"Entry '{key}': Unknown bibstring macro '{macro}' in field '{field_name}'.")
+
+    if macros or not literals:
+      continue
+
+    value = ' '.join(re.sub(r'\s+', ' ', p) for p in literals)
+    matches = venue_names.get('exact:' + normalize_venue(value, strip_prefixes=False)) or venue_names.get('loose:' + normalize_venue(value))
+    if matches:
+      logger.error(f"Entry '{key}': Literal venue {value} in field '{field_name}' matches bibstring {', '.join(sorted(matches))}; use the bibstring.")
+    elif field_name.lower() != 'series':
+      logger.warning(f"Entry '{key}': Literal venue {value} in field '{field_name}' has no bibstring; consider adding one to journal-list.")
+
+
+def sanitize_block(block_text: str, valid_macros: Set[str], key: str, venue_names: Dict[str, Set[str]]) -> str:
   # 1. Non-standard characters -> LaTeX macros
   for char, macro in LATEX_MACROS.items():
     if char in block_text:
@@ -93,7 +193,11 @@ def sanitize_block(block_text: str, valid_macros: Set[str], key: str) -> str:
     # Abort if the inner content looks like it contains another field definition entirely
     if re.search(r'^\s*[a-zA-Z0-9_\-]+\s*=', inner, flags=re.MULTILINE):
       return match.group(0)
-      
+
+    # Keep single-word values such as `{{DINOv3}}`, where the inner braces protect one word
+    if not re.search(r'\s', inner):
+      return match.group(0)
+
     # Abort if braces are unbalanced or depth drops below 0.
     # This preserves outer braces for `{{BEGIN} words {END}}` (depth drops < 0)
     # but successfully simplifies `{{{BEGIN} words {END}}}` (depth stays >= 0).
@@ -135,25 +239,9 @@ def sanitize_block(block_text: str, valid_macros: Set[str], key: str) -> str:
     
   block_text = re.sub(r'^( *pages\s*=\s*)(.+?)(,?\s*)$', fix_pages, block_text, flags=re.MULTILINE | re.IGNORECASE)
   
-  # 5. Verify unquoted macros
+  # 5. Verify venue macros and literal venue names
   if valid_macros:
-    for match in re.finditer(r'^( *[a-zA-Z0-9_\-]+\s*=\s*)(.+?)(,?\s*)$', block_text, flags=re.MULTILINE):
-      field_name = match.group(1).split('=')[0].strip()
-      
-      if field_name.lower() not in ['journal', 'booktitle', 'series']:
-        continue
-        
-      val = match.group(2).strip()
-      if not val or val.isdigit() or val.startswith('{') or val.startswith('"'):
-        continue
-      
-      # Handles concatenated macros like: booktitle = W_CVPR # " 2024"
-      parts = [p.strip() for p in val.split('#')]
-      for part in parts:
-        if not part or part.isdigit() or part.startswith('{') or part.startswith('"'):
-          continue
-        if part.lower() not in valid_macros:
-          logger.error(f"Entry '{key}': Unknown bibstring macro '{part}' in field '{field_name}'.")
+    check_venues(block_text, key, valid_macros, venue_names)
 
   return block_text
 
@@ -162,6 +250,7 @@ def sanitize_bibtex(input_file: str, output_file: str, journal_dir: str = "") ->
     raise FileNotFoundError(f"Input file '{input_file}' not found.")
     
   valid_macros = load_macros(journal_dir)
+  venue_names = load_venue_names(journal_dir)
 
   with open(input_file, 'r', encoding='utf-8') as f:
     content = f.read()
@@ -191,7 +280,7 @@ def sanitize_bibtex(input_file: str, output_file: str, journal_dir: str = "") ->
       final_lines.extend(block)
       continue
       
-    new_block_text = sanitize_block(block_text, valid_macros, key)
+    new_block_text = sanitize_block(block_text, valid_macros, key, venue_names)
     if new_block_text != block_text:
       logger.info(f"Sanitized formatting for entry: '{key}'")
       sanitized_count += 1

@@ -32,6 +32,7 @@ def standardize_entry(entry_text: str, stopwords: Set[str], seen_keys: Set[str])
     else:
       lastname = first_author.split()[-1]
       
+    lastname = re.sub(r'\\[vuHcdbkrt](?![a-zA-Z])|\\[=.^"\'`~]', '', lastname) # Drop accent commands, e.g. \v{z}
     lastname = re.sub(r'[^a-z]', '', lastname.lower())
     
     # 2. Parse Year

@@ -30,12 +30,13 @@ make standardize
 ```
 
 This command sequentially runs the following tools on `cv-ml-master.bib`:
-- **Sanitize** (`make sanitize`): Replaces non-standard characters with LaTeX macros, removes double curly braces, normalizes month formats, fixes page ranges, and verifies that unquoted macros exist in your local `~/texmf/bibtex/bib/journal-list` repository.
+- **Sanitize** (`make sanitize`): Replaces non-standard characters with LaTeX macros, removes double curly braces, normalizes month formats, fixes page ranges, verifies that unquoted macros exist in your local `~/texmf/bibtex/bib/journal-list` repository, and reports literal venue names (e.g., `journal = {Neurocomputing}`) that match a bibstring as errors. Literal venues with no bibstring are reported as warnings.
 - **Standardize Authors** (`make authors`): Standardizes author field formatting (e.g., consistent name ordering and separators).
 - **Sort** (`make sort`): Sorts the entries alphabetically by the first author's last name, year, and cleaned title.
 - **Standardize Keys** (`make keys`): Replaces citation keys using the `lastnameYYYYfirstTitleWord` pattern, disambiguating identical keys with letters (a, b, c).
 - **Find Duplicates** (`make duplicates`): Scans for duplicate entries based on title and author lists. Exact duplicates are merged.
 - **Check** (`make check`): Verifies that the BibTeX file is valid (e.g., well-formed entries, required fields present).
+- **Titles** (`make titles`): Fails if a title word outside curly braces has capitals after its first letter (e.g., `ImageNet`, `DINOv2`, `3D`), if braces are nested inside other braces (write `{DINO}`, not `{{DINO}}`; accents such as `{\"{o}}` are fine), if braces cover only part of a word (write `{DINOv3}`, not `{DINO}v3`), or if a title of several words is wrapped in braces as a whole. A one-word title such as `{{DINOv3}}` is a word escape and is allowed. Capitalized words in the middle of a title are reported as warnings, since only you can tell a proper name from title case. It never edits the file.
 
 Each step can also be run individually (e.g., `make sort`). Run `make help` to see a summary of all available targets.
 
